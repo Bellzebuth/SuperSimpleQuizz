@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/rand"
 	"net/http"
 	"time"
@@ -125,4 +126,69 @@ func QuizzHandler(w http.ResponseWriter, r *http.Request) {
 
 	// send quizz
 	json.NewEncoder(w).Encode(questionsWithoutAnswers)
+}
+
+/// questions
+
+var rankingBoard = &RankingBoard{}
+
+type Answer struct {
+	QuestionId int
+	Answer     string
+}
+
+type UserAnswer struct {
+	UserName string
+	Answer   []Answer
+}
+
+func CheckAnswersHandler(w http.ResponseWriter, r *http.Request) {
+	// get request body
+	var userAnswer UserAnswer
+	err := json.NewDecoder(r.Body).Decode(&userAnswer)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// verify answers
+	score := Score{
+		Player: userAnswer.UserName,
+		Score:  0,
+	}
+	for _, answer := range userAnswer.Answer {
+		for _, question := range questions {
+			if question.Id == answer.QuestionId {
+				if question.Answer == answer.Answer {
+					score.Score += 3
+				} else {
+					score.Score -= 1
+				}
+			}
+		}
+	}
+
+	// insert player in the ranking board
+	position := rankingBoard.InsertScore(score)
+
+	// set message
+	var message string
+	if len(rankingBoard.scores) == 1 {
+		message = "You are the first player !"
+	} else if position == 1 {
+		message = "You are first !"
+	} else if position == len(rankingBoard.scores) {
+		message = "You are the last..."
+	} else {
+		percentage := -(float64(position-len(rankingBoard.scores)) / float64(len(rankingBoard.scores))) * 100
+
+		message = fmt.Sprintf("You are better than %.0f%% of all quizzers", percentage)
+	}
+
+	// send response
+	fmt.Fprintf(w, "Your score is %d\nYou are ranked %d out of %d\n%s",
+		score.Score,
+		position,
+		len(rankingBoard.scores),
+		message)
 }
